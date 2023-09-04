@@ -48,5 +48,15 @@ data %>%
   separate(name, into = c("Переменная", "Статистика"), sep = "_") %>%
   rename(`Значение` = value)
 ```
+```{r}
+data %>%
+  select(`Группа`, where(is.factor)) %>%
+  mutate(`Группа крови` = `Группа крови` %>% as.character() %>% replace_na("Нет данных") %>% as.factor()) %>%
+  count(`Группа`, `Группа крови`) %>%
+  group_by(`Группа`) %>%
+  mutate(`Процент по группе` = (n / sum(n)) %>% round(4) %>% `*` (100) %>% str_c("%")) %>%
+  ungroup() %>%
+  mutate(`Процент по выборке` = (n / sum(n)) %>% round(4) %>% `*` (100) %>% str_c("%"))
+```
 
 
