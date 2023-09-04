@@ -46,7 +46,10 @@ data %>%
   summarize(across(where(is.numeric), statistics)) %>%
   pivot_longer(!`Группа`) %>%
   separate(name, into = c("Переменная", "Статистика"), sep = "_") %>%
-  rename(`Значение` = value)
+  rename(`Значение` = value) %>%
+  flextable() %>%
+  theme_box() %>%
+  merge_v(c("Группа", "Переменная"))
 ```
 ```{r}
 data %>%
