@@ -1,0 +1,300 @@
+---
+title: "Домашнее задание по курсу 'Визуализация биомедицинских данных' (2)"
+author: "Юлия Матвиенко"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+```
+
+# Загрузка необходимых библиотек
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(ggpubr)
+library(plotly)
+library(rstatix)
+library(corrplot)
+library(corrr)
+library(factoextra)
+library(pheatmap)
+library(FactoMineR)
+library(ggbiplot)
+library(tidymodels)
+library(embed)
+```
+
+# Задание 1.
+```{r}
+life_expectancy <- read_rds("life_expectancy_data.rds")
+
+summary(life_expectancy)
+```
+# Задание 2.
+```{r, fig.dim = c(10, 6)}
+plot_ly(data = life_expectancy,
+        x = ~ `Basic sanitation services`,
+        y = ~  `Tuberculosis Incidence`,
+        color = ~ continent) %>%
+  layout(
+    title = 'Отношение охвата базовым санитарным обеспечением и заболеваемости туберкулезом',
+    yaxis = list(title = 'Заболеваемость туберкулезом',
+                 zeroline = FALSE),
+    xaxis = list(title = 'Процент охвата базовым санитарным обеспечением',
+                 zeroline = FALSE))
+
+```
+
+# Задание 3.
+```{r}
+life_expectancy %>%
+  filter(continent %in% c("Africa", "Americas")) %>%
+  ggqqplot(x = "Life expectancy", facet.by = "continent")
+```
+
+&nbsp;
+
+Для сравнения распределений можем использовать параметрический тест.
+
+```{r}
+stat.test <- life_expectancy %>%
+  filter(continent %in% c("Africa", "Americas")) %>%
+  rstatix::t_test(`Life expectancy` ~ continent) %>% 
+  rstatix::add_xy_position(x = "continent")
+
+stat.test
+
+life_expectancy %>%
+  filter(continent %in% c("Africa", "Americas")) %>%
+  ggboxplot(
+  x = "continent", y = "Life expectancy", 
+  ylab = "Life expectancy", xlab = "Continent") + 
+  labs(subtitle = get_test_label(stat.test, detailed = TRUE)) + 
+  stat_pvalue_manual(stat.test, tip.length = 0)
+```
+# Задание 4.
+
+```{r, fig.dim = c(10, 6)}
+life_expectancy_num <- life_expectancy %>%
+  select(where(is.numeric), -Year)
+
+life_expectancy_cor <- cor(life_expectancy_num)
+
+corrplot(life_expectancy_cor, method = 'circle',
+         tl.cex = 0.7,
+         tl.col = "black")
+
+corrplot(life_expectancy_cor, method = 'number',
+         order = 'alphabet',
+         type = 'lower',
+         tl.cex = 0.7,
+         number.cex = 0.5,
+         tl.col = "black")
+
+```
+
+# Задание 5.
+```{r}
+life_expectancy_scaled <- scale(life_expectancy_num) #Стандартизируем значения
+
+life_expectancy_dist <- dist(life_expectancy_scaled) #Создаем матрицу дистанций
+
+life_expectancy_hc <- hclust(d = life_expectancy_dist, 
+                        method = "ward.D2") #Высчитываем дендрограмму кластеров
+
+fviz_dend(life_expectancy_hc, 
+          cex = 0.1) #Визуализируем
+```
+
+# Задание 6.
+```{r}
+pheatmap(life_expectancy_scaled, 
+         show_rownames = FALSE, 
+         clustering_distance_rows = life_expectancy_dist,
+         clustering_method = "ward.D2", 
+         cutree_rows = 4,
+         cutree_cols = length(colnames(life_expectancy_scaled)),
+         angle_col = 45, 
+         main = "Dendrograms for clustering rows and columns with heatmap")
+```
+
+&nbsp;
+
+Мы построили иерархическую кластеризацию по строкам и столбцам, что позволило выделить группы наблюдений с "наименьшей дистанцией" между ними.
+Отчетливо выделилась группа очень небольшого размера (вторая сверху) с высокими GDP и GNP, в остальных группах оба показателя имеют низкие значения. Можно выделить группу (первая сверху) с чуть более высокими значениями показателей Tuberculosis incidence, Mortality caused by road traffic injury, Infant Mortality, Non-communicable Mortality. Также можно выделить отдельный кластер - в этой группе (первой сверху) очень низкие значения показателей иммунизации Measles, DPT и HepB3. И эта же группа выделяется по кластеру показателей Clean fuels and cooking technologies, Life expectancy и Basic sanitation services (низкие значения).
+
+# Задание 7.
+```{r, fig.dim = c(12, 9)}
+life_expectancy.pca <- prcomp(life_expectancy_num, 
+                        scale = T) #Сохраняем стандартизацию
+summary(life_expectancy.pca)
+fviz_pca_var(life_expectancy.pca, repel = T, col.var = "contrib")
+```
+
+&nbsp;
+
+По результатам PCA-анализа первые 2 главные компоненты объясняют 51% вариации данных. 75% варианции объясняют первые 5 главных компонент, а 90% - первые 9 главных компонент. Для графика использованы первые 2 главные компоненты (соответствуют осям графика, в скобках указан % объясненной дисперсии - 39.9% и 11.6% соответственно). По графику можно выделить группы переменных: 1) Measles Immunization, DPT Immunization, HepB3 Immunization; 2) Basic sanitation services, Life expectancy, Clean fuels and cooking technologies; 3) Urban population, Per capita; 4) GDP, GNI; 5) Infant mortality, Tuberculosis incidence; 6) Non-communicable Mortality, Mortality caused by road traffic injury; 7) остальные. Также видно, что некоторые переменные имеют отрицательную корреляцию - стрелки направлены в противоположные стороны и достаточно близко к окружности, т.е. имеют весомый вклад в главные компоненты (Urban population и Rural population). Переменные, которые внесли наибольший вклад с точки зрения вариации в первых 2 главных компонентах, можно посмотреть или на этом графике (наиболее светлые и близкие к окружности, но т.к. переменных достаточно много - тяжело точно определить визуально), или построив отдельный график.
+
+```{r, fig.dim = c(10, 6)}
+fviz_pca_var(life_expectancy.pca, 
+             select.var = list(contrib = 5), 
+             col.var = "contrib")
+```
+
+&nbsp;
+
+Таким образом, 5 переменных, которые внесли наибольший вклад с точки зрения вариации в первых 2 главных компонентах (суммарно объясняют 75% вариации), - Measles Immunization, DPT Immunization, HepB3 Immunization, Life expectancy и Infant mortality.
+
+
+# Задание 8.
+```{r, fig.dim = c(10, 6)}
+p <- ggbiplot(life_expectancy.pca, 
+         scale=0,
+         groups = as.factor(life_expectancy$continent), 
+         ellipse = T,
+         alpha = 0.4) +
+  theme_minimal()
+
+p
+
+ggplotly(p,
+         tooltip = 'color')
+
+```
+
+&nbsp;
+
+При использовании ggbiplot график нечитаемый (т.к. накладываются названия показателей). Можно использовать вместо этого fviz_pca_biplot (есть опция repel), но такой график полноценно не переводится в plotly, насколько я поняла, в plotly не реализовано repel. Во всяком случае у меня не получилось:(
+
+```{r, fig.dim = c(10, 6)}
+fviz_pca_biplot(life_expectancy.pca, repel = T,
+                geom = "point",
+                habillage = life_expectancy$continent,
+                addEllipses = T, ellipse.level = 0.68,
+                alpha = 0.4)
+```
+
+&nbsp;
+
+Или, поскольку переменные накладываются друг на друга, можно показать на графике, например, только 5 колонок с наиболее весомым вкладом в главные компоненты.
+
+```{r, fig.dim = c(10, 6)}
+p2 <- fviz_pca_biplot(life_expectancy.pca,
+                geom = "point",
+                select.var = list(contrib = 5),
+                addEllipses = T, ellipse.level = 0.68,
+                habillage = life_expectancy$continent,
+                alpha = 0.5)
+
+library(gginnards)
+p2 <- shift_layers(p2, "GeomPoint", shift = +1) #Вывели выше слой с точками, чтобы в plotly  названия континентов отображались при наведении на точки, а не на эллипсы. Наверное, это можно сделать более элегантно, но я не сообразила как :(
+
+ggplotly(p2,
+         tooltip = 'color')
+```
+
+
+# Задание 9.
+При разделении наблюдений на группы по континентам особенно выделяется группа стран Европы, в которой высокие показатели Life expectancy, Basic sanitation services, Clean fuels and cooking technologies, Hospital beds. А также группа стран Африки с высокими показателями Infant mortality, Tuberculosis incidence. Для остальных континентов большой разброс всех показателей в положительном и отрицательном направлении.
+
+# Задание 10.
+```{r, fig.dim = c(10, 6)}
+umap_prep <- recipe(~., data = life_expectancy_num) %>%
+  step_normalize(all_predictors()) %>%
+  step_umap(all_predictors()) %>%
+  prep() %>%
+  juice()
+
+umap_prep %>%
+  ggplot(aes(UMAP1, UMAP2)) + #  # можно добавить раскраску 
+  geom_point(aes(color = life_expectancy$continent), 
+             alpha = 0.7, size = 2) +
+  labs(color = NULL)
+```
+
+&nbsp;
+
+При использовании алгоритма UMAP мы видим "сгусток" точек для Африки, а также более-менее плотный сгусток для Европы, соответственно можно детально провести анализ внутри этих кластеров. Для других континентов данные разрознены. Особенность анализа с использованием алгоритма UMAP по сравнению с PCA в том, что при UMAP значения сгруппированы в "сгустки", однако при этом не анализируются колонки, анализ проводится только по строкам.
+
+# Задание 11.
+```{r, fig.dim = c(10, 6)}
+# Эксперимент 1
+life_expectancy_rand <- life_expectancy_num %>%
+  select(-sample(seq_len(ncol(.)), size = 5))
+
+life_expectancy_rand.pca <- prcomp(life_expectancy_rand, 
+                        scale = T)
+
+summary(life_expectancy_rand.pca)
+
+ggbiplot(life_expectancy_rand.pca, 
+         scale=0,
+         groups = as.factor(life_expectancy$continent), 
+         ellipse = T,
+         alpha = 0.4) +
+  theme_minimal()
+```
+```{r, fig.dim = c(10, 6)}
+# Эксперимент 2
+life_expectancy_rand <- life_expectancy_num %>%
+  select(-sample(seq_len(ncol(.)), size = 5))
+
+life_expectancy_rand.pca <- prcomp(life_expectancy_rand, 
+                        scale = T)
+
+summary(life_expectancy_rand.pca)
+
+ggbiplot(life_expectancy_rand.pca, 
+         scale=0,
+         groups = as.factor(life_expectancy$continent), 
+         ellipse = T,
+         alpha = 0.4) +
+  theme_minimal()
+```
+```{r, fig.dim = c(10, 6)}
+# Эксперимент 3
+life_expectancy_rand <- life_expectancy_num %>%
+  select(-sample(seq_len(ncol(.)), size = 5))
+
+life_expectancy_rand.pca <- prcomp(life_expectancy_rand, 
+                        scale = T)
+
+summary(life_expectancy_rand.pca)
+
+ggbiplot(life_expectancy_rand.pca, 
+         scale=0,
+         groups = as.factor(life_expectancy$continent), 
+         ellipse = T,
+         alpha = 0.4) +
+  theme_minimal()
+```
+
+&nbsp;
+
+При удалении 5 столбцов отмечается повышение кумулятивного процента объясненной вариации. Во всех 3 повторениях этот процент разный, однако во всех случаях выше, чем в исходной оценке на полном датасете. Итоговые представления на биплотах также различаются в 3 экспериментах и по сравнению с исходным анализом. При этом в 3 экспериментах биплоты имеют разную форму - эллипсы меняют форму от очень вытянутой до приближенной к окружности, также в некоторых случаях меняется направление эллипсов. Также несколько меняется величина и направление стрелок. Такие различия между 3 экспериментами связаны с тем, что каждый раз удаляются разные колонки, т.е. меняется анализируемый датасет.
+
+# Задание 12.
+```{r, fig.dim = c(10, 6)}
+life_expectancy_dummy <- life_expectancy %>%
+  mutate(Africa = ifelse(continent == "Africa", 1, 0),
+         Oceania = ifelse(continent == "Oceania", 1, 0)) %>%
+  select(where(is.numeric), -Year)
+
+life_expectancy_dummy.pca <- prcomp(life_expectancy_dummy, 
+                        scale = T)
+
+summary(life_expectancy_dummy.pca)
+
+ggbiplot(life_expectancy_dummy.pca, 
+         scale=0,
+         groups = as.factor(life_expectancy$continent), 
+         ellipse = T,
+         alpha = 0.4) +
+  theme_minimal()
+```
+
+&nbsp;
+
+Наблюдаем снижение процента объясненной вариации по сравнению с исходным анализом, что объясняется добавлением 2 новых переменных. При этом размеры и направление эллипсов не изменились (или изменились минимально, незаметно при визуальной оценке). Добавление дамми-колонок не совсем корректно, т.к. PCA предназначен в первую очередь для работы с количественными переменными, которые перед этим проходят нормирование (т.е. нормированные значения количественных переменных и бинарные данные не совсем корректно сопоставлять). Можно провести FAMD, который будет сочетать анализ для количественных и категориальных переменных.
